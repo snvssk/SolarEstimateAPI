@@ -28,7 +28,7 @@ class Housetype:
         args = request.args
         
         #args = { 'address': '1644 STEMEL WAY', 'city': 'Milpitas','state': 'California','zipcode': '95035','family-size': '3','energy-bill': '0'}
-        print(args)
+        #print(args)
         address = args['address']
         city = args['city']
         state = args['state']
@@ -52,13 +52,15 @@ class Housetype:
             latitude,longitude = self.latlong(address_string=address+city+state+zipcode)
             housetype_records[0]['longitude'] = longitude
             housetype_records[0]['latitude'] = latitude
+            image_url = self.mapbox(longitude,latitude)
+            housetype_records[0]['roof_image'] = image_url
             address_result = json.dumps(str(housetype_records))
-            self.mapbox(longitude,latitude)
+            
         return address_result
 
     #Fetch Latitude and Longitude 
     def latlong(self,address_string):
-        print(address_string)
+        #print(address_string)
         params = {
             'address': address_string,
             'sensor': 'false',
@@ -70,7 +72,7 @@ class Housetype:
         req = requests.get(GOOGLE_MAPS_API_URL, params=params)
         res = req.json()
 
-        print(res)
+        #print(res)
         # Use the first result
         result = res['results'][0]
 
@@ -78,7 +80,7 @@ class Housetype:
         geodata['lat'] = result['geometry']['location']['lat']
         geodata['lng'] = result['geometry']['location']['lng']
         geodata['address'] = result['formatted_address']
-        print('{address}. (lat, lng) = ({lat}, {lng})'.format(**geodata))
+        #print('{address}. (lat, lng) = ({lat}, {lng})'.format(**geodata))
         return geodata['lat'],geodata['lng']
         
     def mapbox(self,longitude,latitude):
@@ -101,7 +103,8 @@ class Housetype:
         bucket = storage_client.get_bucket('solarestimation_images')
         blob = bucket.blob('mapbox_downloads/'+mapbox_downloaded_filename)
         blob.upload_from_filename(local_folder_name +mapbox_downloaded_filename)
-        return 0
+        public_url_img = "https://storage.googleapis.com/solarestimation_images/mapbox_downloads/"+mapbox_downloaded_filename
+        return public_url_img
        
 
 
