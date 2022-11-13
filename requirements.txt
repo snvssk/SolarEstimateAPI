@@ -3,3 +3,4 @@ flask-restful
 pandas
 google-api-python-client
 google-cloud
+google-cloud-bigquery
