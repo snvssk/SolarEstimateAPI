@@ -1,0 +1,9 @@
+flask
+flask-restful
+pandas
+scikit-learn
+google-api-python-client
+google-cloud
+google-cloud-bigquery
+google-cloud-aiplatform
+google-cloud-storage
