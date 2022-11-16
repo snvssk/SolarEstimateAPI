@@ -1,30 +1,28 @@
-from flask import Flask, render_template
+from flask import Flask, render_template,Response
 import json
 app = Flask(__name__)
 
-from Users import Users
+#Import Classes 
 from Locations import Locations
 from Housetype import Housetype
 from Solarenergy import Solarenergy
 
-@app.route('/users')
-def users():
-    user_obj = Users()
-    result = user_obj.get()
-    return result
 
+#Example Route
 @app.route('/locations')
 def locations():
     location_obj = Locations()
     result = location_obj.get()
     return result
 
+#House Type and Satellite Image Fetcher
 @app.route('/housetype')
 def housetype():
     housetype_obj = Housetype()
     result = housetype_obj.get()
-    return result
+    return Response(result,mimetype='application/json')
 
+#Solar Energy Calculator
 @app.route('/solarenergy')
 def solarenergy():
     solarenergy_obj = Solarenergy()
