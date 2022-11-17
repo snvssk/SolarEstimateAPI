@@ -4,7 +4,9 @@ from google.oauth2 import service_account
 from flask import request
 import requests,json
 import time
-import json
+import json,os 
+
+from Roofsize import Roofsize
 
 
 #Credentials to access Google Account, Google Maps, Map box API
@@ -57,17 +59,24 @@ class Housetype:
         )
         
         housetype_result = client.query(housetype_sql,job_config=job_config) 
-        address_result = '{"result":"Address Not Valid"}'
+        address_result = '{"result": "Address Not Valid"}'
 
         if(housetype_result.result().total_rows>0):
             housetype_records = [dict(row) for row in housetype_result]
             latitude,longitude = self.latlong(address_string=address+city+state+zipcode)
             housetype_records[0]['longitude'] = longitude
             housetype_records[0]['latitude'] = latitude
-            image_url = self.mapbox(longitude,latitude)
-            housetype_records[0]['roof_image'] = image_url
+            image_results = self.mapbox(longitude,latitude)
+            #print(type(image_results))
+            #print(image_results)
+            housetype_records[0]['roof_image'] = image_results['mapbox_image_url']
+            housetype_records[0]['segmented_roof_image'] = image_results['segmented_image_url']
+            housetype_records[0]['roof_size'] = image_results['roof_size']
+            housetype_records[0]['roof_type'] = image_results['roof_type']
+
             address_result = json.dumps(str(housetype_records))
-            
+        
+        print(address_result)
         return address_result
 
     #Fetch Latitude and Longitude 
@@ -125,10 +134,24 @@ class Housetype:
 
         #Upload To Google Cloud Storage
         bucket = storage_client.get_bucket('solarestimation_images')
+
         blob = bucket.blob('mapbox_downloads/'+mapbox_downloaded_filename)
         blob.upload_from_filename(local_folder_name +mapbox_downloaded_filename)
         public_url_img = "https://storage.googleapis.com/solarestimation_images/mapbox_downloads/"+mapbox_downloaded_filename
-        return public_url_img
+
+        #Roofsize Calculator
+        roofsize = Roofsize()
+        roof_results = json.loads(roofsize.get('mapbox_images/'+mapbox_downloaded_filename))
+        #print(roof_results)
+        #print(type(roof_results))
+        segmented_blob = bucket.blob("segmented_images/"+os.path.basename(roof_results['segmented_image']))
+        segmented_blob.upload_from_filename(roof_results["segmented_image"])
+        segmented_public_url_img = "https://storage.googleapis.com/solarestimation_images/segmented_images/"+os.path.basename(roof_results['segmented_image'])
+
+        roof_results['segmented_image_url'] = segmented_public_url_img
+        roof_results['mapbox_image_url'] = public_url_img     
+
+        return roof_results
        
 
 

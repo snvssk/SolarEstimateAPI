@@ -20,24 +20,28 @@ df = df.loc[(df['Hour'].isin([7, 10, 13, 16, 19])) & (df['Minute'] == 0)]
 testdata = df.drop(columns='Unnamed: 0')
 testdata_final = testdata.dropna()
 
-#df['Hour'] = df['Hour'] + df['Minute'] / 60
-#data_trimmed = df.drop(['Minute', 'Unnamed: 0'],axis =1)
-#print(data_trimmed)
+
 
 input = testdata_final.drop(['GHI'],axis =1)
-
+#print(input.loc[10])
 
 sc = StandardScaler()
 input_nor_test = sc.fit_transform(input)
-x = input_nor_test[2].astype(np.float32).tolist()
+#x = input_nor_test[2].astype(np.float32).tolist()
 #print(x)
 
 class Solarenergy:
     def get(self):
         args = request.args
         endpoint=aiplatform.Endpoint(endpoint_name=endpoint_name,credentials=credentials)
-        energy_result = endpoint.predict(instances=[x]).predictions
+        energy_result = []
+        for i in range(30):
+            
+            x = input_nor_test[i].astype(np.float32).tolist()
+            print(x)
+            prediction = endpoint.predict(instances=[x]).predictions
+            energy_result.append(prediction[0])
 
-        return json.dumps(energy_result[0])
+        return json.dumps(energy_result)
 
 
