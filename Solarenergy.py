@@ -10,19 +10,21 @@ credentials = service_account.Credentials.from_service_account_file('data298-347
 
 project_id = 'data298-347103'
 PROJECT_NUMBER='586683398823'
-ENDPOINT_ID='5439662254607826944'
+ENDPOINT_ID='7642485422345420800'
 endpoint_name=f"projects/"+PROJECT_NUMBER+"/locations/us-east1/endpoints/"+ENDPOINT_ID
 
 
 
 df = pd.read_csv('data/cupertino_transformed_combined.csv')
+df = df.loc[(df['Hour'].isin([7, 10, 13, 16, 19])) & (df['Minute'] == 0)]
 testdata = df.drop(columns='Unnamed: 0')
 testdata_final = testdata.dropna()
-df['Hour'] = df['Hour'] + df['Minute'] / 60
-data_trimmed = df.drop(['Minute', 'Unnamed: 0'],axis =1)
+
+#df['Hour'] = df['Hour'] + df['Minute'] / 60
+#data_trimmed = df.drop(['Minute', 'Unnamed: 0'],axis =1)
 #print(data_trimmed)
 
-input = data_trimmed.drop(['GHI', 'Location'],axis =1)
+input = testdata_final.drop(['GHI'],axis =1)
 
 
 sc = StandardScaler()
