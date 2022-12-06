@@ -37,13 +37,24 @@ class Roofsize:
             print('No Segmentation/Classification')
             roof_area = 0.0
         else:
-            roof_area = (np.sqrt(outputs["instances"].to("cpu").pred_masks[0].numpy().sum()* .281))
-            print(f'Segmented Area : {(np.sqrt(outputs["instances"].to("cpu").pred_masks[0].numpy().sum()* .281)):.2f} m')
+            zoom_level_multiplier = .281
+            roof_area = (np.sqrt(outputs["instances"].to("cpu").pred_masks[0].numpy().sum()* zoom_level_multiplier))
+            print(f'Segmented Area : {(np.sqrt(outputs["instances"].to("cpu").pred_masks[0].numpy().sum()* zoom_level_multiplier)):.2f} m')
         
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
         segmented_img_filepath = "segmented_images/"+os.path.basename(roof_image_path)
         cv2.imwrite(segmented_img_filepath, out.get_image()[:, :, ::-1])
+        panel_area =  0
 
-        roof_results = {'segmented_image':segmented_img_filepath, 'roof_size': str(roof_area), 'roof_type': class_name}
+        if 'Solar' in class_name:
+            panel_area = 0
+        elif 'Slope' in class_name:
+            panel_area = roof_area*0.5
+        elif 'Flat' in class_name:
+            panel_area = roof_area*0.75
+        
+        number_of_panels =  round(panel_area / 8,0)
+
+        roof_results = {'segmented_image':segmented_img_filepath, 'roof_size': str(round(roof_area,2)), 'roof_type': class_name, 'panel_area': panel_area , 'panel_count': number_of_panels}
 
         return json.dumps(roof_results)

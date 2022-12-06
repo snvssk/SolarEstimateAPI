@@ -1,49 +1,135 @@
 from google.cloud import bigquery
-from google.cloud import storage
 from google.oauth2 import service_account
 from flask import request
-import requests,json
-import time
-import json,os 
+import time,json,os
+from google.cloud import storage
+import base64
+import urllib.parse
+
 
 from Roofsize import Roofsize
+from LatLong import LatLong
+from MapBox import MapBox
 
 
-#Credentials to access Google Account, Google Maps, Map box API
+#Credentials to access Google Account
 #Json Files are not committed to Git, Check with Dev
 credentials = service_account.Credentials.from_service_account_file('data298-347103-eaa0e3e59658.json')
-f = open ('maps_api_key.json', "r")
-maps_key_json = json.loads(f.read())
-google_maps_api_key = maps_key_json['google_maps_api_key']
-map_box_api_key = maps_key_json['map_box_api_key']
-
-#External API URLs
-GOOGLE_MAPS_API_URL = 'https://maps.googleapis.com/maps/api/geocode/json'
-MAP_BOX_API_URL = 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/'
-
 
 #BigQuery and Storage Client
 project_id = 'data298-347103'
 client = bigquery.Client(credentials= credentials,project=project_id)
 storage_client = storage.Client(credentials=credentials, project=project_id)
 
+#Upload To Google Cloud Storage
+bucket = storage_client.get_bucket('solarestimation_images')
+
 
 class Housetype:
 
     #Fetch House type infromation from County Database
+    def post(self):
+        print('call received')
+        print(request)
+        print(request.form)
+        args = request.get_json()
+        print(args)
+        # Store User Uploaded image into mapbox images folder
+        user_upload_filename = "useruplaoded_image_"+str(time.time())+".png"
+        upload_path = "mapbox_images/"+user_upload_filename
+        with open(upload_path, "wb") as fh:
+            fh.write(base64.b64decode(args['roofImageFile']))
+
+        address = args['address']
+        city = args['city']
+        state = args['state']
+        zipcode = args['zipcode']
+        
+        return self.processinput(address,city,state,zipcode,upload_path)
+
     def get(self):
+        print(request.args)
+        print(urllib.parse.unquote(request.args['address']))
         args = request.args
-    
         address = args['address']
         city = args['city']
         state = args['state']
         zipcode = args['zipcode']
 
+        return self.processinput(address,city,state,zipcode)
+        
+
+
+    def processinput(self,address,city,state,zipcode,upload_path=''):
+
         #Response String
-        address_result = {'Address': args['address'], 'ZipCode': '95035', 'City': args['city'], 
-                            'State': args['state'], 'Unit_Type': 'Unknown', 'County': 'Unknownx', 
-                            'longitude': 0.0, 'latitude': 0.0, 
-                            'roof_image': ''}
+        address_result = {'Address': address, 'ZipCode': zipcode, 'City': city, 
+                            'State': state, 'Unit_Type': 'Unknown', 'County': 'Unknown', 
+                            'longitude': 0.0, 'latitude': 0.0}
+
+        latlong = LatLong()
+        mapbox = MapBox()
+        roofsize = Roofsize()
+
+        latitude,longitude = latlong.get(address_string=address+city+state+zipcode)
+        if(latitude!=0 and longitude!=0):
+            address_result['longitude'] = longitude
+            address_result['latitude'] = latitude
+
+            if(upload_path==''):
+                #Calling Mapbox API
+                image_results = json.loads(mapbox.get(longitude,latitude))
+                #print(type(image_results))
+                print(image_results)
+                public_url_input_img = image_results['public_url_img']
+
+
+                #Segment and Roofsize calculation for mapbox image
+                roof_results = json.loads(roofsize.get('mapbox_images/'+image_results['mapbox_downloaded_filename']))
+                #print(roof_results)
+                #print(type(roof_results))
+                
+            else:
+                #Segment and Roofsize calculation for image uploaded by the user
+                roof_results = json.loads(roofsize.get(upload_path))
+                #print(roof_results)
+                #print(type(roof_results))
+                
+                #User uploaded image to cloud storage
+                blob = bucket.blob('user_uploads/'+os.path.basename(upload_path))
+                blob.upload_from_filename(upload_path)
+                public_url_input_img = "https://storage.googleapis.com/solarestimation_images/user_uploads/"+os.path.basename(upload_path)
+                
+
+            #Segmentation and Roof Size 
+            segmented_blob = bucket.blob("segmented_images/"+os.path.basename(roof_results['segmented_image']))
+            segmented_blob.upload_from_filename(roof_results["segmented_image"])
+            segmented_public_url_img = "https://storage.googleapis.com/solarestimation_images/segmented_images/"+os.path.basename(roof_results['segmented_image'])
+            
+            address_result['roof_size'] = roof_results['roof_size']
+            address_result['roof_type'] = roof_results['roof_type']
+            address_result['panel_area'] = roof_results['panel_area']
+            address_result['panel_count'] = roof_results['panel_count']
+            address_result['segmented_image_url'] = segmented_public_url_img
+            address_result['roof_image_url'] = public_url_input_img
+            address_result['status'] = 'OK'
+
+            county_data_response = self.countyData(address,zipcode,city)
+            if(county_data_response['status']!='failed'):
+                address_result['Unit_Type'] = county_data_response['Unit_Type']
+                address_result['County'] = county_data_response['County']
+
+
+        else:
+            address_result={'status': 'failed', 'reason': 'Address Not Found'}
+
+        print(address_result)
+
+        return json.dumps(str(address_result))
+
+   
+    def countyData(self,address,zipcode,city):
+        
 
         #BigQuery Lookup for Address
         housetype_sql = """SELECT * FROM `data298-347103.County_Addresses.COUNTY_ADDRESS_DATA` 
@@ -59,99 +145,18 @@ class Housetype:
         )
         
         housetype_result = client.query(housetype_sql,job_config=job_config) 
-        address_result = '{"result": "Address Not Valid"}'
-
         if(housetype_result.result().total_rows>0):
             housetype_records = [dict(row) for row in housetype_result]
-            latitude,longitude = self.latlong(address_string=address+city+state+zipcode)
-            housetype_records[0]['longitude'] = longitude
-            housetype_records[0]['latitude'] = latitude
-            image_results = self.mapbox(longitude,latitude)
-            #print(type(image_results))
-            #print(image_results)
-            housetype_records[0]['roof_image'] = image_results['mapbox_image_url']
-            housetype_records[0]['segmented_roof_image'] = image_results['segmented_image_url']
-            housetype_records[0]['roof_size'] = image_results['roof_size']
-            housetype_records[0]['roof_type'] = image_results['roof_type']
+            print(housetype_records[0])
+            county_data = {'Unit_Type': housetype_records[0]['Unit_Type'], 'County' : 'Santa Clara' ,'status': 'OK'}
 
-            address_result = json.dumps(str(housetype_records))
+        else:
+            county_data = {"status": "failed", "reason" :"Address Not Found"}
         
-        print(address_result)
-        return address_result
-
-    #Fetch Latitude and Longitude 
-    def latlong(self,address_string):
-        
-        #Parameters for Google Maps API for Latitude and Longitude conversion
-        params = {
-            'address': address_string,
-            'sensor': 'false',
-            'region': 'india',
-            'key': google_maps_api_key 
-        }
-
-        # Calling Google Maps API 
-        req = requests.get(GOOGLE_MAPS_API_URL, params=params)
-        res = req.json()
-        #print(res)
+        return county_data
 
 
-        # Use the first result
-        result = res['results'][0]
-
-        #Create a Dictionary for the result
-        geodata = dict()
-        geodata['lat'] = result['geometry']['location']['lat']
-        geodata['lng'] = result['geometry']['location']['lng']
-        geodata['address'] = result['formatted_address']
-        #print('{address}. (lat, lng) = ({lat}, {lng})'.format(**geodata))
-        return geodata['lat'],geodata['lng']
-
-    #Map Box API call for getting Image   
-    def mapbox(self,longitude,latitude):
-
-        #Map Box API Params
-        zoom_level = '19' 
-        bearing = '47' # rotating map
-        pitch = '0' # tilting map
-        img_size = '256x256@2x'
-        static_params = [str(longitude),str(latitude),zoom_level,bearing,pitch]
-
-        params = {
-            'access_token': map_box_api_key 
-        }
-        
-        # Get the Satellite Image from Mapbox API
-        req = requests.get(MAP_BOX_API_URL+",".join(static_params)+"/"+img_size, params=params)
-        
-
-        # Write in a local folder before upload
-        mapbox_downloaded_filename = "satellite_image_"+str(time.time())+".png"
-        local_folder_name = "mapbox_images/"
-        file = open(local_folder_name +mapbox_downloaded_filename, "wb")
-        file.write(req.content)
-        file.close()
-
-        #Upload To Google Cloud Storage
-        bucket = storage_client.get_bucket('solarestimation_images')
-
-        blob = bucket.blob('mapbox_downloads/'+mapbox_downloaded_filename)
-        blob.upload_from_filename(local_folder_name +mapbox_downloaded_filename)
-        public_url_img = "https://storage.googleapis.com/solarestimation_images/mapbox_downloads/"+mapbox_downloaded_filename
-
-        #Roofsize Calculator
-        roofsize = Roofsize()
-        roof_results = json.loads(roofsize.get('mapbox_images/'+mapbox_downloaded_filename))
-        #print(roof_results)
-        #print(type(roof_results))
-        segmented_blob = bucket.blob("segmented_images/"+os.path.basename(roof_results['segmented_image']))
-        segmented_blob.upload_from_filename(roof_results["segmented_image"])
-        segmented_public_url_img = "https://storage.googleapis.com/solarestimation_images/segmented_images/"+os.path.basename(roof_results['segmented_image'])
-
-        roof_results['segmented_image_url'] = segmented_public_url_img
-        roof_results['mapbox_image_url'] = public_url_img     
-
-        return roof_results
+    
        
 
 

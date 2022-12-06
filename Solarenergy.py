@@ -15,7 +15,7 @@ endpoint_name=f"projects/"+PROJECT_NUMBER+"/locations/us-east1/endpoints/"+ENDPO
 
 
 
-df = pd.read_csv('data/cupertino_transformed_combined.csv')
+df = pd.read_csv('data/all_2021test_transformed.csv')
 df = df.loc[(df['Hour'].isin([7, 10, 13, 16, 19])) & (df['Minute'] == 0)]
 testdata = df.drop(columns='Unnamed: 0')
 testdata_final = testdata.dropna()

@@ -1,5 +1,6 @@
 from flask import Flask, render_template,Response
 import json
+import flask
 app = Flask(__name__)
 
 #Import Classes 
@@ -16,10 +17,13 @@ def locations():
     return result
 
 #House Type and Satellite Image Fetcher
-@app.route('/housetype')
+@app.route('/housetype',methods = ['POST', 'GET'])
 def housetype():
     housetype_obj = Housetype()
-    result = housetype_obj.get()
+    if(flask.request.method=='POST'):
+        result = housetype_obj.post()
+    else:
+        result = housetype_obj.get()
     return Response(result,mimetype='application/json')
 
 #Solar Energy Calculator
