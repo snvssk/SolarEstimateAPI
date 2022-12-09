@@ -5,6 +5,8 @@ import time,json,os
 from google.cloud import storage
 import base64
 import urllib.parse
+from pprint import pprint
+import datetime
 
 
 from Roofsize import Roofsize
@@ -44,8 +46,10 @@ class Housetype:
         city = args['city']
         state = args['state']
         zipcode = args['zipcode']
+        energy_usage = args['energy_usage']
+        member_count = args['member_count']
         
-        return self.processinput(address,city,state,zipcode,upload_path)
+        return self.processinput(address,city,state,zipcode,energy_usage,member_count,upload_path)
 
     def get(self):
         print(request.args)
@@ -55,17 +59,20 @@ class Housetype:
         city = args['city']
         state = args['state']
         zipcode = args['zipcode']
+        zipcode = args['zipcode']
+        energy_usage = args['energy_usage']
+        member_count = args['member_count']
 
-        return self.processinput(address,city,state,zipcode)
+        return self.processinput(address,city,state,zipcode,energy_usage,member_count)
         
 
 
-    def processinput(self,address,city,state,zipcode,upload_path=''):
+    def processinput(self,address,city,state,zipcode,energy_usage,member_count,upload_path=''):
 
         #Response String
         address_result = {'Address': address, 'ZipCode': zipcode, 'City': city, 
-                            'State': state, 'Unit_Type': 'Unknown', 'County': 'Unknown', 
-                            'longitude': 0.0, 'latitude': 0.0}
+                            'State': state, 'energy_usage':  energy_usage, 'member_count': member_count,
+                            'Unit_Type': 'Single Family', 'County': 'Santa Clara', 'longitude': 0.0, 'latitude': 0.0}
 
         latlong = LatLong()
         mapbox = MapBox()
@@ -113,17 +120,22 @@ class Housetype:
             address_result['segmented_image_url'] = segmented_public_url_img
             address_result['roof_image_url'] = public_url_input_img
             address_result['status'] = 'OK'
+            self.storeUserRequests(address_result)
 
             county_data_response = self.countyData(address,zipcode,city)
             if(county_data_response['status']!='failed'):
-                address_result['Unit_Type'] = county_data_response['Unit_Type']
+                if(county_data_response['Unit_Type']=='Commercial'):
+                    address_result['Unit_Type'] = "Single Family"
+                else:
+                    address_result['Unit_Type'] = county_data_response['Unit_Type']
                 address_result['County'] = county_data_response['County']
-
+                
 
         else:
             address_result={'status': 'failed', 'reason': 'Address Not Found'}
 
         print(address_result)
+        
 
         return json.dumps(str(address_result))
 
@@ -154,6 +166,34 @@ class Housetype:
             county_data = {"status": "failed", "reason" :"Address Not Found"}
         
         return county_data
+
+    def storeUserRequests(self,estimation_result):
+        ct = datetime.datetime.now()
+        ts = ct.timestamp()
+        rows_to_insert = [
+            {"request_time" : ts, "user_house_address": estimation_result['Address'], "user_city" : estimation_result['City'],
+             "user_zipcode" : int(estimation_result['ZipCode']), "user_state": estimation_result['State'], 
+             "user_family_member_count": int(estimation_result['member_count']), "user_energy_usage": int(estimation_result['energy_usage']),
+              "latitude": estimation_result['latitude'], "longitude" :estimation_result['longitude'], "roof_size_estimate" : float(estimation_result['roof_size']),
+              "roof_type_estimate" :  estimation_result['roof_type'],"roof_panel_area_estimate": float(estimation_result['panel_area']),
+              "roof_panel_count_estimate":  int(estimation_result['panel_count']), "user_roof_image_url": estimation_result['roof_image_url'],
+              "segmented_roof_image_url": estimation_result['segmented_image_url'],"unit_type_estimate": estimation_result['Unit_Type'] }
+        ]
+        table_id = "data298-347103.projectReports.SolarEstimationRequests"
+        
+        print("BigQuery Insert")
+        print(rows_to_insert)
+        try:
+            userrequest_insertion_result = client.insert_rows_json(table_id, rows_to_insert)
+            print(userrequest_insertion_result)
+            #print(userrequest_insertion_result.errors)
+            #pprint(vars(userrequest_insertion_result))
+        except:
+            pprint(vars(userrequest_insertion_result))
+        
+        return 0
+
+    
 
 
     
