@@ -2,6 +2,7 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 from flask import request
 import time,json,os
+
 from google.cloud import storage
 import base64
 import urllib.parse
@@ -12,7 +13,7 @@ import datetime
 from Roofsize import Roofsize
 from LatLong import LatLong
 from MapBox import MapBox
-
+from Solarenergy import Solarenergy
 
 #Credentials to access Google Account
 #Json Files are not committed to Git, Check with Dev
@@ -77,6 +78,7 @@ class Housetype:
         latlong = LatLong()
         mapbox = MapBox()
         roofsize = Roofsize()
+        solarintensity = Solarenergy()
 
         latitude,longitude = latlong.get(address_string=address+city+state+zipcode)
         if(latitude!=0 and longitude!=0):
@@ -129,7 +131,13 @@ class Housetype:
                 else:
                     address_result['Unit_Type'] = county_data_response['Unit_Type']
                 address_result['County'] = county_data_response['County']
-                
+
+            solarintensity_estimates =  json.loads(solarintensity.get(address_result['City']) )
+            if(solarintensity_estimates['status']=='ok'):
+                address_result['solarintensity'] =  solarintensity_estimates['median_solar_intensity']
+            else:
+                address_result['solarintensity'] = -1.0
+            
 
         else:
             address_result={'status': 'failed', 'reason': 'Address Not Found'}
